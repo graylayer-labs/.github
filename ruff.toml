@@ -1,0 +1,49 @@
+# Org-wide Ruff Configuration
+# Reference this in your repo's pyproject.toml:
+#   [tool.ruff]
+#   extend-config = ["../../.github/ruff.toml"]  # or wherever .github lives relative to your repo
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+  # Errors
+  "E",      # pycodestyle errors
+  "F",      # Pyflakes
+  # Warnings
+  "W",      # pycodestyle warnings
+  # Import sorting
+  "I",      # isort
+  # Upgrades
+  "UP",     # pyupgrade
+  # Bugbear
+  "B",      # flake8-bugbear
+  # Simplification
+  "SIM",    # flake8-simplify
+  # Comprehensions
+  "C4",     # flake8-comprehensions
+  # Docstrings
+  "D",      # pydocstyle
+  # Logging
+  "LOG",    # flake8-logging
+  # Performance
+  "PERF",   # perflint
+  # Type checking
+  "TRY",    # tryceratops (better error handling)
+  "ASYNC",  # flake8-async
+]
+
+ignore = [
+  "D100",   # missing-docstring-in-public-module (too strict for research code)
+  "D101",   # missing-docstring-in-public-class
+  "D102",   # missing-docstring-in-public-method
+  "D103",   # missing-docstring-in-public-function
+  "D104",   # missing-docstring-in-public-package
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.isort]
+known-first-party = ["src"]

@@ -1,54 +1,88 @@
-# Labeling Rules
+# Labeling Rules & Standards
 
-All projects in graylayer-labs use standardized labels for discoverability and organization.
+All graylayer-labs repositories use standardized labels to make projects discoverable and track development status transparently.
 
 ## Label Categories
 
-See [.codex/label-schema.yaml](../../.codex/label-schema.yaml) for the full catalog.
+See [.codex/label-schema.yaml](.codex/label-schema.yaml) for the complete catalog.
 
-### data:* — Datasets
+### Required Labels (per repo)
 
-Tag issues/PRs with the datasets they use:
+Every repo MUST have labels applied to classify its primary purpose:
+
+**Exactly one `data:*` label** (what dataset does this work with?)
 - `data:COCO/Detection` — COCO object detection
-- `data:Custom/Proprietary` — proprietary datasets
+- `data:COCO/Segmentation` — COCO segmentation
+- `data:Custom/Proprietary` — proprietary/custom dataset
 - `data:Synthetic` — synthetic data
+- `data:Benchmark` — benchmark-only (no specific dataset)
 
-### model:* — Models & Algorithms
-
-Tag with the approach:
-- `model:YOLO/v8` — YOLOv8
-- `model:ViT` — Vision Transformer
-- `model:SSL/SimCLR` — Self-supervised learning
+**Exactly one `model:*` label** (what algorithm/architecture?)
+- `model:YOLO/v8`, `model:ResNet`, `model:ViT`
+- `model:SSL/SimCLR`, `model:SSL/MoCo`
 - `model:Custom` — custom architecture
+- `model:Ensemble` — multiple models
 
-### status:* — Project Maturity
-
-Always tag issues/PRs with status:
-- `status:Experimental` — early stage, unvalidated
+**Exactly one `status:*` label** (maturity level?)
+- `status:Experimental` — early stage, not validated
 - `status:In-Progress` — active development
-- `status:Stable` — validated, reproducible
+- `status:Stable` — validated, reproducible, documented
 - `status:Archived` — no longer active
 
-### source:* — Framework/Language
-
+**At least one `source:*` label** (framework/language?)
 - `source:PyTorch`
 - `source:TensorFlow`
 - `source:JAX`
 
-### type:* — Issue/PR Type
+### Issue/PR Labels
 
-- `type:bug`
-- `type:enhancement`
-- `type:documentation`
-- `type:experiment`
+When opening issues or PRs:
+- `type:bug` — bug fix
+- `type:enhancement` — new feature or improvement
+- `type:documentation` — docs/guides
+- `type:experiment` — experimental work (not for main)
 
-## Usage
+## How to Label a Repo
 
-A typical PR for ssl-aerial-person-detection might have:
-- `model:SSL/SimCLR`
-- `data:Custom/Proprietary`
-- `source:PyTorch`
-- `status:Experimental`
-- `type:enhancement`
+Once labels are synced to your repo (via org script), apply to issues/PRs:
 
-This lets viewers quickly understand what's in the project.
+Example: ssl-aerial-person-detection
+```
+Issue: "Add aerial person detection baseline"
+Labels:
+  - model:SSL/SimCLR
+  - data:Custom/Proprietary
+  - source:PyTorch
+  - status:Experimental
+  - type:enhancement
+```
+
+Viewers immediately see: self-supervised + custom aerial data + PyTorch, still experimental.
+
+## Syncing Labels to New/Existing Repos
+
+If a repo is missing labels, run:
+```bash
+cd graylayer-labs/.github
+./scripts/label-sync.sh graylayer-labs <repo-name>
+```
+
+Or sync all org repos:
+```bash
+./scripts/label-sync.sh graylayer-labs
+```
+
+## Enforcement
+
+- **Org-level:** Labels defined in `.codex/label-schema.yaml`
+- **Enforcement:** Manual (GitHub Actions label validation coming soon)
+- **CI:** Quality gate checks code, not labels — label consistently by convention
+
+## Adding New Labels
+
+If your repo needs a label not in the schema:
+1. Open an issue in `graylayer-labs/.github`
+2. Discuss whether it belongs in org-wide schema
+3. Add to `.codex/label-schema.yaml` + sync to all repos
+
+Keep labels sparse — use README for detailed documentation.

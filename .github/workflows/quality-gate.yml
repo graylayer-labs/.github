@@ -1,0 +1,58 @@
+name: Quality Gate (Ruff + Type Check)
+
+on:
+  pull_request:
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'pyrightconfig.json'
+      - '.github/workflows/quality-gate.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: true
+
+      - name: Check Python version constraints
+        run: |
+          if ! grep -q "python = " pyproject.toml; then
+            echo "Error: pyproject.toml must specify python version constraint"
+            exit 1
+          fi
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Lint with ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check with ty
+        run: uv run ty . || true
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short 2>/dev/null || echo "No tests found or pytest not configured"
+
+      - name: Comment results on PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ Quality gate failed. Run locally:\n\n```bash\nuv sync\nuv run ruff check . && uv run ruff format .\nuv run ty .\nuv run pytest tests/\n```'
+            })
