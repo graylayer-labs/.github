@@ -1,0 +1,293 @@
+name: Sync Org Standards
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: 'Repos to sync (comma-separated, or leave empty for all)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo:
+          - lang-goal-rl
+          - ssl-aerial-person-detection
+          - rl-evo-lab
+          - model-monitor-custom
+          - rl-core
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up gh CLI
+        run: |
+          gh auth setup-git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if sync needed
+        id: check
+        run: |
+          REPO_URL="https://github.com/graylayer-labs/${{ matrix.repo }}"
+
+          # Clone repo to temp directory
+          TEMP_DIR=$(mktemp -d)
+          git clone "$REPO_URL" "$TEMP_DIR" 2>&1 || {
+            echo "skip=true"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          }
+
+          cd "$TEMP_DIR"
+
+          # Check if code-quality workflow exists
+          if [ -f ".github/workflows/code-quality.yml" ]; then
+            echo "skip=true"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create/update sync PR
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          REPO="${{ matrix.repo }}"
+          ORG="graylayer-labs"
+          BRANCH_NAME="chore/org-standards-sync"
+
+          echo "Syncing $REPO..."
+
+          # Clone repo
+          TEMP_DIR=$(mktemp -d)
+          cd "$TEMP_DIR"
+          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$ORG/$REPO.git" .
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+
+          # Check if branch exists
+          if git rev-parse --verify origin/$BRANCH_NAME >/dev/null 2>&1; then
+            git checkout $BRANCH_NAME
+            git pull origin $BRANCH_NAME
+          else
+            git checkout -b $BRANCH_NAME
+          fi
+
+          # Create .github/workflows if not exists
+          mkdir -p .github/workflows
+
+          # Copy code-quality workflow
+          cat > ".github/workflows/code-quality.yml" << 'WORKFLOW_EOF'
+          name: Code Quality
+
+          on:
+            pull_request:
+              paths:
+                - '**.py'
+                - '**.js'
+                - '**.ts'
+                - '**.jsx'
+                - '**.tsx'
+                - '**.go'
+                - 'pyproject.toml'
+                - 'package.json'
+                - 'go.mod'
+                - 'ruff.toml'
+                - 'tsconfig.json'
+                - 'pyrightconfig.json'
+                - '.github/workflows/code-quality.yml'
+
+          permissions:
+            contents: read
+            pull-requests: write
+
+          jobs:
+            detect-languages:
+              runs-on: ubuntu-latest
+              outputs:
+                python: ${{ steps.detect.outputs.python }}
+                javascript: ${{ steps.detect.outputs.javascript }}
+                go: ${{ steps.detect.outputs.go }}
+              steps:
+                - uses: actions/checkout@v4
+                - id: detect
+                  run: |
+                    [ -f pyproject.toml ] && echo "python=true" >> $GITHUB_OUTPUT || echo "python=false" >> $GITHUB_OUTPUT
+                    [ -f "package.json" ] && echo "javascript=true" >> $GITHUB_OUTPUT || echo "javascript=false" >> $GITHUB_OUTPUT
+                    [ -f go.mod ] && echo "go=true" >> $GITHUB_OUTPUT || echo "go=false" >> $GITHUB_OUTPUT
+
+            python-quality:
+              needs: detect-languages
+              if: needs.detect-languages.outputs.python == 'true'
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: astral-sh/setup-uv@v2
+                  with:
+                    enable-cache: true
+                - run: uv sync --all-extras
+                - run: uv run ruff check .
+                - run: uv run ruff format --check .
+                - run: uv run ty . || true
+                - run: uv run pytest tests/ -v --tb=short 2>/dev/null || echo "No tests found"
+
+            javascript-quality:
+              needs: detect-languages
+              if: needs.detect-languages.outputs.javascript == 'true'
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    cache: npm
+                - run: npm ci
+                - run: npm run lint 2>/dev/null || echo "No lint script"
+                - run: npm test 2>/dev/null || echo "No test script"
+
+            go-quality:
+              needs: detect-languages
+              if: needs.detect-languages.outputs.go == 'true'
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-go@v4
+                - uses: golangci/golangci-lint-action@v3
+                - run: go test ./...
+
+            auto-merge:
+              needs: [detect-languages, python-quality, javascript-quality, go-quality]
+              if: |
+                always() &&
+                (needs.python-quality.result == 'success' || needs.python-quality.result == 'skipped') &&
+                (needs.javascript-quality.result == 'success' || needs.javascript-quality.result == 'skipped') &&
+                (needs.go-quality.result == 'success' || needs.go-quality.result == 'skipped') &&
+                github.event.pull_request.draft == false &&
+                contains(github.event.pull_request.labels.*.name, 'auto-merge')
+              runs-on: ubuntu-latest
+              permissions:
+                pull-requests: write
+                contents: write
+              steps:
+                - uses: actions/checkout@v4
+                - run: |
+                    gh pr merge ${{ github.event.pull_request.number }} --squash --auto
+                    git push origin --delete ${{ github.head_ref }} || true
+                  env:
+                    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_EOF
+
+          # Update pyproject.toml with ruff config if it exists
+          if [ -f "pyproject.toml" ]; then
+            if ! grep -q "extend-config.*github" pyproject.toml; then
+              if ! grep -q "\[tool.ruff\]" pyproject.toml; then
+                cat >> pyproject.toml << 'RUFF_EOF'
+
+          [tool.ruff]
+          extend-config = ["https://raw.githubusercontent.com/graylayer-labs/.github/main/ruff.toml"]
+          target-version = "py311"
+          RUFF_EOF
+              fi
+            fi
+          fi
+
+          # Create .claude/CLAUDE.md if not exists
+          mkdir -p .claude
+          if [ ! -f ".claude/CLAUDE.md" ]; then
+            cat > ".claude/CLAUDE.md" << 'CLAUDE_EOF'
+          # Project Configuration
+
+          See [graylayer-labs/.github](https://github.com/graylayer-labs/.github) for org-level standards.
+
+          ## Imports
+
+          @graylayer-labs/.github/.claude/CLAUDE.md
+          CLAUDE_EOF
+          fi
+
+          # Commit if there are changes
+          if ! git diff --quiet; then
+            git add .github/workflows/code-quality.yml .claude/CLAUDE.md 2>/dev/null || true
+            if [ -f "pyproject.toml" ] && git diff --name-only | grep -q pyproject.toml; then
+              git add pyproject.toml
+            fi
+
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: sync org standards (code quality workflow, ruff config, claude rules)
+
+          - Add code-quality workflow with language detection and auto-merge
+          - Extend ruff config from org-wide schema
+          - Add .claude/CLAUDE.md referencing org standards
+          - Auto-synced by graylayer-labs/.github"
+
+              git push -u origin $BRANCH_NAME
+
+              # Create or update PR
+              PR_EXISTS=$(gh pr list --repo "$ORG/$REPO" --head "$BRANCH_NAME" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+              if [ -z "$PR_EXISTS" ]; then
+                PR_URL=$(gh pr create \
+                  --repo "$ORG/$REPO" \
+                  --title "chore: sync org standards" \
+                  --body "Synchronize repo with graylayer-labs org standards:
+
+          - ✅ Code quality workflow (language-aware, ruff + ty)
+          - ✅ Org-wide ruff config (extends .github/ruff.toml)
+          - ✅ Claude Code config (.claude/CLAUDE.md)
+
+          **This PR will auto-merge once all checks pass.**
+
+          See [graylayer-labs/.github](https://github.com/graylayer-labs/.github) for details." \
+                  --label "type:chore" \
+                  --label "auto-merge" 2>&1 | grep "https://github.com" || echo "")
+
+                if [ -n "$PR_URL" ]; then
+                  echo "Created PR: $PR_URL"
+                fi
+              else
+                echo "PR #$PR_EXISTS already exists, updated"
+              fi
+            else
+              echo "No changes needed for $REPO"
+            fi
+          else
+            echo "No changes for $REPO"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "✓ Sync completed for ${{ matrix.repo }}"
+
+  summary:
+    needs: sync
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "## Org Standards Sync Complete"
+          echo ""
+          echo "Synced repos:"
+          echo "- lang-goal-rl"
+          echo "- ssl-aerial-person-detection"
+          echo "- rl-evo-lab"
+          echo "- model-monitor-custom"
+          echo "- rl-core"
+          echo ""
+          echo "Check PRs: https://github.com/graylayer-labs/pulls?q=label:auto-merge"

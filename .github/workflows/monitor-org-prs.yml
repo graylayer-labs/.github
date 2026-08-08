@@ -1,0 +1,120 @@
+name: Monitor Org PRs
+
+on:
+  schedule:
+    # Check every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Monitor org PRs and enable auto-merge
+        run: |
+          # Find all open PRs with auto-merge label across org
+          echo "Checking org PRs for auto-merge..."
+
+          for repo in lang-goal-rl ssl-aerial-person-detection rl-evo-lab model-monitor-custom rl-core; do
+            echo ""
+            echo "Checking graylayer-labs/$repo..."
+
+            # Get all open PRs with auto-merge label
+            prs=$(gh pr list --repo "graylayer-labs/$repo" \
+              --label "auto-merge" \
+              --state open \
+              --json number,title,status \
+              -q '.[].number' 2>/dev/null || echo "")
+
+            if [ -z "$prs" ]; then
+              echo "  No open PRs with auto-merge label"
+              continue
+            fi
+
+            for pr in $prs; do
+              echo "  PR #$pr:"
+
+              # Get PR details
+              pr_data=$(gh pr view "$pr" \
+                --repo "graylayer-labs/$repo" \
+                --json statusCheckRollup,isDraft,commits \
+                2>/dev/null || echo "{}")
+
+              is_draft=$(echo "$pr_data" | jq -r '.isDraft // false')
+              status=$(echo "$pr_data" | jq -r '.statusCheckRollup[] | select(.state) | .state' | head -1)
+
+              if [ "$is_draft" == "true" ]; then
+                echo "    Skip: is draft"
+                continue
+              fi
+
+              case "$status" in
+                PASS | SUCCESS)
+                  echo "    ✓ All checks passed, merging..."
+                  gh pr merge "$pr" \
+                    --repo "graylayer-labs/$repo" \
+                    --squash \
+                    --auto 2>&1 | grep -E "auto-merge|already|enabled" || echo "    ✓ Auto-merge enabled"
+                  ;;
+                FAIL | FAILURE)
+                  echo "    ✗ Checks failed, skipping"
+                  ;;
+                PENDING)
+                  echo "    ⏳ Checks pending..."
+                  ;;
+                *)
+                  echo "    ? Unknown status: $status"
+                  ;;
+              esac
+            done
+          done
+
+          echo ""
+          echo "Monitor complete"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clean up merged PR branches
+        run: |
+          echo "Checking for merged PR branches to clean up..."
+
+          for repo in lang-goal-rl ssl-aerial-person-detection rl-evo-lab model-monitor-custom rl-core; do
+            echo ""
+            echo "Checking graylayer-labs/$repo..."
+
+            # Get merged PRs from the sync branch
+            merged=$(gh pr list --repo "graylayer-labs/$repo" \
+              --state merged \
+              --search "chore/org-standards-sync" \
+              --json headRefName \
+              -q '.[].headRefName' 2>/dev/null || echo "")
+
+            if [ -z "$merged" ]; then
+              echo "  No merged branches to clean"
+              continue
+            fi
+
+            for branch in $merged; do
+              echo "  Cleaning up branch: $branch"
+              git push \
+                --repo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/graylayer-labs/$repo.git" \
+                origin --delete "$branch" 2>/dev/null || echo "  Already deleted"
+            done
+          done
+
+          echo ""
+          echo "Cleanup complete"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
