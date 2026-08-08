@@ -41,23 +41,30 @@ Viewers can immediately see what the project contains.
 
 ## Code Quality
 
-Python repositories in this org use:
-- **Ruff** — linting and formatting
-- **Pyright** — type checking
+All Python repositories in this org must pass the **Quality Gate** before merging.
+
+**Tools:**
+- **Ruff** — linting and formatting (org-wide config in `ruff.toml`)
+- **ty** — type checking (warnings don't block, errors should be fixed)
 - **UV** — package management
 - **Pytest** — testing
 
-Before opening a PR:
+**Before opening a PR:**
 
 ```bash
-uv sync                  # ensure dependencies are installed
-ruff check --fix         # lint and auto-fix
-ruff format              # format code
-pyright                  # type check
-pytest tests/            # run tests
+uv sync                     # ensure dependencies are installed
+uv run ruff check --fix     # lint and auto-fix
+uv run ruff format          # format code
+uv run ty .                 # type check
+uv run pytest tests/        # run tests
 ```
 
-Pre-commit hooks will catch formatting issues; fix them and re-push.
+**The Quality Gate runs on every PR:**
+- Ruff violations **block** the PR
+- Type check warnings **don't block** (but should be fixed)
+- Test failures **block** the PR
+
+See [.claude/rules/quality-gate.md](.claude/rules/quality-gate.md) for setup details.
 
 ## Commit Messages
 

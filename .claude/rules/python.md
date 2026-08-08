@@ -1,6 +1,6 @@
 # Python Tooling Rules
 
-This workspace uses **UV** for package management and **Ruff** + **Pyright** for quality.
+This org uses **UV** for package management, **Ruff** for linting/formatting, and **ty** for type checking.
 
 ## Package Management — UV
 
@@ -26,14 +26,18 @@ Config lives in `pyproject.toml` under `[tool.ruff]`.
 
 **Pre-commit hook**: Runs ruff on staged files before commit. Let it fix automatically.
 
-## Type Checking — Pyright
+## Type Checking — ty
 
 ```bash
-pyright <file>
-uv run pyright <file>
+uv run ty .                   # type check entire project
+uv run ty src/mymodule.py     # type check specific file
 ```
 
-Fix type errors; don't suppress with `# type: ignore` unless there's a specific error code and reason.
+Type issues are warnings in CI; errors in `ty` output don't block PRs but should be fixed. Don't suppress with `# type: ignore` unless there's a specific reason documented.
+
+## Quality Gate
+
+All Python repos MUST pass the org quality gate before merging. See [quality-gate.md](quality-gate.md) for setup and requirements.
 
 ## Tests
 

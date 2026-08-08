@@ -4,15 +4,17 @@ Org-level Claude Code configuration for graylayer-labs.
 
 ## Imports
 
-@rules/python.md
+@rules/quality-gate.md
 @rules/labeling.md
+@rules/python.md
 
 ## Quick Reference
 
-- **Language**: Python (uv + ruff + pyright)
-- **Labeling**: See [label schema](../.codex/label-schema.yaml)
+- **Quality Gate**: All Python PRs must pass ruff + ty (see [quality-gate.md](rules/quality-gate.md))
+- **Language**: Python (uv + ruff + ty)
+- **Labeling**: Mandatory labels on all repos (see [labeling.md](rules/labeling.md))
+- **Repos must declare**: data:*, model:*, status:*, source:* labels
 - **Tests**: Pytest, TDD-first on src/
-- **Pre-commit**: Ruff format/check, pyright type checking
 
 ## Repos in this Org
 
