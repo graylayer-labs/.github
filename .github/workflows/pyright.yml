@@ -1,0 +1,20 @@
+name: Pyright Type Check
+
+on:
+  pull_request:
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'pyrightconfig.json'
+      - '.github/workflows/pyright.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pyright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v2
+      - run: uv run pyright

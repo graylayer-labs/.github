@@ -1,0 +1,93 @@
+# Label Schema for graylayer-labs
+# Use these labels to tag issues, PRs, and discussions
+# Format: prefix:value (e.g., data:COCO/Detection, model:YOLO/v8)
+
+labels:
+  # Data labels: document datasets used in the project
+  - name: data:COCO/Detection
+    color: "0075ca"  # blue
+    description: COCO dataset for object detection
+
+  - name: data:COCO/Segmentation
+    color: "0075ca"
+    description: COCO dataset for segmentation
+
+  - name: data:Custom/Proprietary
+    color: "0075ca"
+    description: Custom or proprietary dataset
+
+  - name: data:Synthetic
+    color: "0075ca"
+    description: Synthetically generated data
+
+  # Model/Algorithm labels: document approaches
+  - name: model:YOLO/v8
+    color: "00aa00"  # green
+    description: YOLOv8 architecture
+
+  - name: model:ResNet
+    color: "00aa00"
+    description: ResNet backbone
+
+  - name: model:ViT
+    color: "00aa00"
+    description: Vision Transformer
+
+  - name: model:Custom
+    color: "00aa00"
+    description: Custom architecture
+
+  - name: model:SSL/SimCLR
+    color: "00aa00"
+    description: Self-supervised learning with SimCLR
+
+  - name: model:SSL/MoCo
+    color: "00aa00"
+    description: Self-supervised learning with MoCo
+
+  # Status labels: maturity and stage
+  - name: status:Experimental
+    color: "ffcc00"  # yellow
+    description: Early stage, results not validated
+
+  - name: status:In-Progress
+    color: "ffcc00"
+    description: Active development
+
+  - name: status:Stable
+    color: "28a745"  # dark green
+    description: Validated, reproducible results
+
+  - name: status:Archived
+    color: "999999"  # gray
+    description: No longer active
+
+  # Source/Framework labels
+  - name: source:PyTorch
+    color: "d63031"  # red
+    description: PyTorch implementation
+
+  - name: source:TensorFlow
+    color: "d63031"
+    description: TensorFlow implementation
+
+  - name: source:JAX
+    color: "d63031"
+    description: JAX implementation
+
+  # Type labels for issues/PRs
+  - name: type:bug
+    color: "d73a49"
+    description: Something isn't working
+
+  - name: type:enhancement
+    color: "a2eeef"
+    description: New feature or improvement
+
+  - name: type:documentation
+    color: "0075ca"
+    description: Documentation or guides
+
+  - name: type:experiment
+    color: "f9d5e5"
+    description: Experimental work, not merged to main
