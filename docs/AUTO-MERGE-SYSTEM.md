@@ -1,215 +1,201 @@
 # Auto-Merge System for graylayer-labs
 
-Complete system for org-wide code quality enforcement with automatic PR merging.
+Fully automated org-wide code quality and standardization system.
 
-## Overview
+## How It Works (No Manual Steps Required)
 
-The system has three components:
+### 1. Sync Workflow (`sync-org-standards.yml`)
 
-1. **Code Quality Workflow** — Language-aware CI that checks Python, JavaScript, Go
-2. **Label Validation** — Ensures all PRs have required metadata labels
-3. **Auto-Merge** — Automatically merges PRs when all checks pass
+**Runs:** Every Monday at 9 AM UTC (or manual trigger)
 
-## Code Quality Workflow
+**Does:**
+- Checks all 5 Python repos (lang-goal-rl, ssl-aerial-person-detection, rl-evo-lab, model-monitor-custom, rl-core)
+- For each repo:
+  - Clones and checks if standardization is needed
+  - Creates `chore/org-standards-sync` branch if code-quality workflow missing
+  - Adds/updates:
+    - `.github/workflows/code-quality.yml` (language detection + auto-merge)
+    - `ruff.toml` extension in `pyproject.toml`
+    - `.claude/CLAUDE.md` referencing org rules
+  - Pushes branch and creates PR
+  - Labels PR with `type:chore` and `auto-merge`
 
-**File:** `.github/workflows/code-quality.yml`
+### 2. Code Quality Workflow (`code-quality.yml`)
 
-### How It Works
+**Runs:** On every PR (in all repos)
 
-1. **Language Detection** (`detect-languages` job)
-   - Scans for `pyproject.toml` → Python enabled
-   - Scans for `package.json` → JavaScript enabled
-   - Scans for `go.mod` → Go enabled
+**Detects languages:**
+- Python (`pyproject.toml`) → ruff check/format + ty + pytest
+- JavaScript (`package.json`) → npm lint + npm test  
+- Go (`go.mod`) → golangci-lint + go test
 
-2. **Language-Specific Jobs** (matrix-like, but explicit)
-   - **Python**: `uv sync` + `ruff check` + `ruff format --check` + `ty check`
-   - **JavaScript**: `npm ci` + `npm lint` + `npm test`
-   - **Go**: `golangci-lint` + `go test ./...`
-   - Jobs only run if language is detected
+**Auto-merges when:**
+- All language checks pass
+- PR has `auto-merge` label
+- PR is not a draft
+- Squash merges and deletes branch
 
-3. **Label Validation** (`check-labels` job)
-   - Verifies PR has required labels:
-     - At least one `data:*` label
-     - At least one `model:*` label
-     - At least one `status:*` label
-     - At least one `source:*` label
+### 3. Monitor Workflow (`monitor-org-prs.yml`)
 
-4. **Auto-Merge** (`auto-merge` job)
-   - Runs only if:
-     - All language checks passed (or were skipped)
-     - Label validation passed
-     - PR is not a draft
-     - PR has the `auto-merge` label
-   - Merges with `--squash`
-   - Deletes feature branch
+**Runs:** Every 30 minutes
 
-### Workflow Triggers
+**Does:**
+- Finds all open PRs with `auto-merge` label across all 5 repos
+- Checks if all CI checks have passed
+- Enables auto-merge on PRs ready to merge
+- Cleans up branches from merged PRs
 
-Runs on PRs that touch:
-- Python files (`.py`)
-- JavaScript/TypeScript files (`.js`, `.ts`, `.jsx`, `.tsx`)
-- Go files (`.go`)
-- Config files (`pyproject.toml`, `package.json`, `go.mod`, `ruff.toml`, `tsconfig.json`, `pyrightconfig.json`)
-- The workflow itself
+## Current Status
 
-## PR Creation & Standardization
+✅ **System is self-contained** — everything runs in `.github` repo via workflows
+✅ **No manual PRs needed** — sync workflow creates them automatically  
+✅ **Automatic merging** — monitor workflow handles auto-merge + cleanup
+✅ **Scheduled runs** — sync weekly, monitor every 30 min
 
-**Script:** `scripts/create-org-sync-prs.sh`
+## What You Do
 
-### What It Does
+**Nothing!** The system runs automatically.
 
-For each Python repo in the org:
-
-1. **Clones the repo** (or pulls latest)
-2. **Creates a feature branch** (`chore/org-standards-sync`)
-3. **Adds code-quality workflow** to `.github/workflows/code-quality.yml`
-4. **Updates pyproject.toml** to extend org ruff config:
-   ```toml
-   [tool.ruff]
-   extend-config = ["https://raw.githubusercontent.com/graylayer-labs/.github/main/ruff.toml"]
-   ```
-5. **Adds `.claude/CLAUDE.md`** that imports org rules
-6. **Commits & pushes** branch
-7. **Creates a PR** with:
-   - Title: `chore: sync org standards`
-   - Labels: `type:chore`, `auto-merge`
-   - Body: explains changes + auto-merge behavior
-8. **Adds language-detected labels** (e.g., `source:PyTorch`)
-
-### Usage
-
+**To manually trigger sync:**
 ```bash
-cd graylayer-labs/.github
-./scripts/create-org-sync-prs.sh
+gh workflow run sync-org-standards.yml --repo graylayer-labs/.github
 ```
 
-This creates PRs for:
-- `lang-goal-rl`
-- `ssl-aerial-person-detection`
-- `rl-evo-lab`
-- `model-monitor-custom`
-- `rl-core`
+**To check status:**
+- Sync status: https://github.com/graylayer-labs/.github/actions/workflows/sync-org-standards.yml
+- Monitor status: https://github.com/graylayer-labs/.github/actions/workflows/monitor-org-prs.yml
+- Org PRs: https://github.com/graylayer-labs/pulls?q=label:auto-merge
 
-Each PR will:
-- Run the code quality workflow
-- Label-check (workflow won't enforce labels on PRs created by script, just warn)
-- Auto-merge when all checks pass (enabled by `auto-merge` label)
-- Auto-delete the feature branch
+## What Gets Synced to Each Repo
 
-## Label Schema
+### 1. Code Quality Workflow
 
-All PRs and repos use standardized labels. See `.codex/label-schema.yaml` for full schema.
+```yaml
+.github/workflows/code-quality.yml
+```
 
-### Required Labels (per repo, not just PRs)
+Language-aware workflow that:
+- Detects Python/JavaScript/Go
+- Runs appropriate linters and tests
+- Auto-merges when all pass + has `auto-merge` label
 
-| Category | Example | Purpose |
-|----------|---------|---------|
-| `data:*` | `data:COCO/Detection` | What dataset/data source |
-| `model:*` | `model:YOLO/v8` | What algorithm/model |
-| `status:*` | `status:Experimental` | Maturity level |
-| `source:*` | `source:PyTorch` | Framework/language |
+### 2. Ruff Configuration
 
-### Optional Labels
-
-| Category | Example |
-|----------|---------|
-| `type:*` | `type:bug`, `type:enhancement`, `type:documentation` |
-
-## Implementation Checklist
-
-### Before Running PR Script
-
-- [ ] `.github` repo created with:
-  - [ ] `.github/workflows/code-quality.yml` (auto-merge enabled)
-  - [ ] `ruff.toml` (org-wide config)
-  - [ ] `.codex/label-schema.yaml` (label definitions)
-  - [ ] `.claude/` rules (quality-gate, labeling, python)
-  - [ ] `scripts/create-org-sync-prs.sh` (PR creation)
-
-- [ ] Labels synced to all repos via `scripts/label-sync.sh`
-
-- [ ] Each repo has required labels:
-  - [ ] At least one `data:*`
-  - [ ] At least one `model:*`
-  - [ ] At least one `status:*`
-  - [ ] At least one `source:*`
-
-### Running the System
-
-1. **Create sync PRs:**
-   ```bash
-   cd graylayer-labs/.github
-   ./scripts/create-org-sync-prs.sh
-   ```
-
-2. **Monitor PRs:**
-   - Go to https://github.com/graylayer-labs/pulls
-   - Each PR has labels `type:chore` and `auto-merge`
-   - CI workflow runs automatically
-
-3. **PRs auto-merge when:**
-   - Language checks pass (ruff, ty for Python; eslint for JS; golangci-lint for Go)
-   - Test suites pass (if configured)
-   - Label validation passes (but script-created PRs may need manual review)
-   - All other workflows pass (if any)
-   - PR has `auto-merge` label
-
-4. **Clean up:**
-   - Script auto-deletes branches after merge
-   - No manual cleanup needed
-
-## Troubleshooting
-
-### PR stuck (not auto-merging)
-
-**Possible causes:**
-1. **Missing `auto-merge` label** — workflow only auto-merges if label is present
-2. **Ruff violation** — fix locally, push to update PR
-3. **Type check error** — `ty` errors block the job, fix type issues
-4. **Test failure** — fix tests and push
-5. **Label validation failed** — missing required label on PR itself
-
-**Fix:**
-1. Check workflow run details: https://github.com/$ORG/$REPO/actions
-2. Fix issues locally
-3. Push to feature branch (PR auto-updates)
-4. Workflow re-runs, auto-merges when all pass
-
-### Ruff conflicts across repos
-
-Each repo can override org config in `pyproject.toml`:
-
+In each repo's `pyproject.toml`:
 ```toml
 [tool.ruff]
 extend-config = ["https://raw.githubusercontent.com/graylayer-labs/.github/main/ruff.toml"]
-line-length = 88  # override if needed
+target-version = "py311"
 ```
 
-Keep overrides minimal. If many overrides are needed, discuss in graylayer-labs/.github issues.
+Extends org-wide ruff config, can override per-repo if needed.
 
-### Language not detected
+### 3. Claude Configuration
 
-The workflow checks for:
-- Python: `pyproject.toml`
-- JavaScript: `package.json`
-- Go: `go.mod`
+```
+.claude/CLAUDE.md
+```
 
-If your repo uses a different setup (e.g., `setup.py` instead of `pyproject.toml`), either:
-1. Rename/create `pyproject.toml` (recommended)
-2. Update workflow to detect your setup
+References org-level rules:
+```markdown
+# Project Configuration
 
-## Future Enhancements
+See [graylayer-labs/.github](https://github.com/graylayer-labs/.github) for org-level standards.
 
-- [ ] Rust support (check for `Cargo.toml`)
-- [ ] C/C++ support (check for `CMakeLists.txt`)
-- [ ] YAML linting for GitHub Actions workflows
-- [ ] Markdown linting (prettier)
-- [ ] Dependency scanning (GitHub security)
-- [ ] Code coverage reporting
+## Imports
 
-## Related Documents
+@graylayer-labs/.github/.claude/CLAUDE.md
+```
 
-- [`.claude/rules/quality-gate.md`](.claude/rules/quality-gate.md) — Quality gate setup for individual repos
-- [`.claude/rules/labeling.md`](.claude/rules/labeling.md) — Label schema and conventions
-- [`.codex/label-schema.yaml`](.codex/label-schema.yaml) — Complete label catalog
-- [`docs/new-repo-setup.md`](docs/new-repo-setup.md) — Template for new projects
+## Label Schema
+
+All repos use standardized labels from `.codex/label-schema.yaml`:
+
+**Required (per repo):**
+- `data:*` — Dataset (e.g., `data:COCO/Detection`)
+- `model:*` — Algorithm (e.g., `model:YOLO/v8`)
+- `status:*` — Maturity (e.g., `status:Experimental`)
+- `source:*` — Framework (e.g., `source:PyTorch`)
+
+**Optional (issues/PRs):**
+- `type:*` — Type (bug, enhancement, documentation, experiment)
+
+Labels already synced to all repos. Use them consistently.
+
+## Files in `.github`
+
+```
+.github/
+├── .github/workflows/
+│   ├── code-quality.yml          ← Runs in all synced repos
+│   ├── sync-org-standards.yml    ← Creates/updates org sync PRs (weekly)
+│   ├── monitor-org-prs.yml       ← Monitors & auto-merges PRs (every 30 min)
+│   ├── quality-gate.yml          ← Deprecated (kept for reference)
+│   ├── ruff.yml                  ← Deprecated
+│   └── pyright.yml               ← Deprecated
+├── ruff.toml                     ← Org-wide ruff config
+├── scripts/
+│   └── label-sync.sh             ← Manual label syncing (if needed)
+├── docs/
+│   ├── AUTO-MERGE-SYSTEM.md      ← This file
+│   └── new-repo-setup.md         ← Template for new projects
+├── .claude/
+│   └── rules/
+│       ├── quality-gate.md       ← How repos set up quality gate
+│       ├── labeling.md           ← Label conventions
+│       └── python.md             ← Python tooling rules
+└── .codex/
+    └── label-schema.yaml         ← Complete label definitions
+```
+
+## Troubleshooting
+
+### PR not auto-merging
+
+**Check:**
+1. PR has `auto-merge` label? (sync workflow adds it, but verify)
+2. All CI checks passed? Check PR checks section
+3. PR is not a draft?
+
+**If ruff failed:**
+- Fix locally: `uv run ruff check --fix && uv run ruff format`
+- Push to sync branch, PR auto-updates
+- Workflow re-runs
+
+**If type check failed:**
+- Fix locally: `uv run ty .`
+- Push, workflow re-runs
+
+**If test failed:**
+- Fix locally: `uv run pytest tests/`
+- Push, workflow re-runs
+
+### Sync workflow not creating PR
+
+**Check:**
+1. Sync workflow run: https://github.com/graylayer-labs/.github/actions/workflows/sync-org-standards.yml
+2. Look for errors in workflow logs
+3. Repo might already have code-quality.yml (skips sync)
+
+### Monitor workflow not merging ready PRs
+
+**Check:**
+1. Monitor workflow run: https://github.com/graylayer-labs/.github/actions/workflows/monitor-org-prs.yml
+2. PR status checks: all green?
+3. PR has `auto-merge` label?
+
+## Future
+
+- [ ] Extend to support Rust, C/C++, etc.
+- [ ] Label validation in code-quality workflow (enforce labels on all PRs)
+- [ ] Dependency scanning and updates
+- [ ] Automated changelog generation
+- [ ] Coverage reporting integration
+
+## Reference
+
+- [`.github/workflows/code-quality.yml`](.github/workflows/code-quality.yml) — Main quality workflow
+- [`.github/workflows/sync-org-standards.yml`](.github/workflows/sync-org-standards.yml) — Sync automation
+- [`.github/workflows/monitor-org-prs.yml`](.github/workflows/monitor-org-prs.yml) — PR monitoring
+- [`.codex/label-schema.yaml`](.codex/label-schema.yaml) — Label definitions
+- [`.claude/rules/`](.claude/rules/) — Org standards & rules
