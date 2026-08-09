@@ -73,12 +73,13 @@ jobs:
 
           echo "Syncing $REPO..."
 
-          # Clone repo
+          # Clone repo using gh CLI (already authenticated)
           TEMP_DIR=$(mktemp -d)
           cd "$TEMP_DIR"
-          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$ORG/$REPO.git" .
+          gh repo clone "$ORG/$REPO" . -- --quiet
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
+          git remote set-url origin "https://github.com/$ORG/$REPO.git"
 
           # Check if branch exists
           if git rev-parse --verify origin/$BRANCH_NAME >/dev/null 2>&1; then
