@@ -2,70 +2,74 @@
 
 Follow this checklist when creating a new Python project in the graylayer-labs org.
 
-## 1. Initialize Project
+## 1. Create the Repo from the Template
+
+New repos start from the `graylayer-labs/repo-template` template repo and are
+**private by default**. Making a repo public is a separate, deliberate step
+(see "Going public" below).
 
 ```bash
-gh repo create graylayer-labs/<project-name> --public --clone
+gh repo create graylayer-labs/<project-name> --private \
+  --template graylayer-labs/repo-template --clone
 cd <project-name>
-git init
-uv init --python 3.11
 ```
 
-## 2. Create Project Structure
+The template provides:
 
 ```
 <project>/
-├── src/
-│   └── <project>/
-│       └── __init__.py
-├── tests/
-│   └── test_*.py
-├── pyproject.toml
 ├── .github/
-│   └── workflows/
-│       └── quality-gate.yml
-└── .claude/
-    └── CLAUDE.md
+│   ├── workflows/ci.yml          # job `checks`
+│   ├── ISSUE_TEMPLATE/task.md
+│   ├── pull_request_template.md
+│   └── dependabot.yml            # GitHub Actions, monthly, grouped
+├── .gitignore
+├── LICENSE                       # MIT
+├── README.md
+└── pyproject.toml
 ```
 
-## 3. Configure `pyproject.toml`
+## 2. Fill In the Placeholders and Add the Package
 
-```toml
-[project]
-name = "<project>"
-version = "0.1.0"
-description = ""
-requires-python = ">=3.11"
-dependencies = []
+Replace `<repo-name>`, `<package>`, `<one line>` and `<year>` in
+`pyproject.toml`, `README.md` and `LICENSE`, then add the source and test
+layout:
 
-[tool.uv]
-dev-dependencies = [
-    "pytest",
-    "ruff",
-    "ty",
-]
-
-[tool.ruff]
-extend-config = ["https://raw.githubusercontent.com/graylayer-labs/.github/main/ruff.toml"]
-target-version = "py311"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
+```
+src/<package>/__init__.py
+tests/test_<something>.py
 ```
 
-## 4. Add Quality Gate Workflow
+## 3. Tooling (`pyproject.toml`)
 
-Create `.github/workflows/quality-gate.yml`:
+The template already sets this up. For reference:
 
-```yaml
-name: Quality Gate
+- **Python 3.12**: `requires-python = ">=3.12"`, ruff `target-version = "py312"`,
+  `[tool.ty.environment] python-version = "3.12"`
+- **uv** for environments and dependencies; `uv.lock` is committed
+- **Dev tools** in `[dependency-groups] dev`: `pytest`, `ruff`, `ty`
+- **Ruff**: `line-length = 88`, `select = ["E", "F", "I", "UP", "B", "SIM"]`
 
-on: [pull_request]
-
-jobs:
-  quality:
-    uses: graylayer-labs/.github/.github/workflows/quality-gate.yml@main
+```bash
+uv lock
+uv sync --dev
 ```
+
+## 4. CI
+
+`.github/workflows/ci.yml` runs on pull requests and on pushes to `main`. Its
+`checks` job runs:
+
+```bash
+uv sync --dev --locked
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+uv run pytest
+```
+
+The job is skipped while a repo is still marked as a template, so it only runs
+in repos created from it.
 
 ## 5. Create `.claude/CLAUDE.md`
 
@@ -88,50 +92,46 @@ This inherits org-level configuration and rules.
 ./scripts/label-sync.sh graylayer-labs <project-name>
 ```
 
-## 7. Create README
+## 7. Write the README
 
-Include:
-- **Goal/problem statement**
-- **Dataset used** (link to data:* label)
-- **Model/algorithm** (link to model:* label)
-- **Framework** (PyTorch/TensorFlow/JAX)
-- **Status** (Experimental/In-Progress/Stable)
-- **How to run** — quick start commands
-- **Results** (if applicable)
+Say what the repo is in one paragraph, its status
+(Experimental/In progress/Stable), how to install and run it, and how to test
+it. Add the dataset, model and framework where they apply.
 
-Example:
-```markdown
-# ssl-aerial-person-detection
+## 8. First Commit, Settings and Board
 
-Self-supervised person detection in aerial imagery.
-
-- **Dataset**: Custom proprietary aerial imagery (~50k images)
-- **Model**: SimCLR pre-training + YOLOv8 detection head
-- **Framework**: PyTorch
-- **Status**: Experimental
-- **Paper**: [link if published]
-
-## Quick Start
-\`\`\`bash
-uv sync
-uv run python src/ssl_aerial/train.py
-\`\`\`
-
-## Results
-- mAP@0.5: 0.72 (baseline)
-- Inference: 45ms per image (RTX 3090)
-```
-
-## 8. First Commit
+Filling in the skeleton is the only commit, after the one the template creates,
+that goes straight to `main`:
 
 ```bash
-uv sync
-uv run ruff check . && uv run ruff format .
-uv run ty .
-git add -A
-git commit -m "chore: init project skeleton with quality gate"
-git push -u origin main
+uv sync --dev
+uv run ruff check . && uv run ruff format --check . && uv run ty check && uv run pytest
+git add pyproject.toml uv.lock README.md LICENSE src tests
+git commit -m "chore: add project skeleton"
+git push origin main
 ```
+
+Then set the repo up:
+
+- **Merge settings**: squash merge only, delete branch on merge, wiki off.
+- **Labels**: at least `bug`, `enhancement`, `chore`, `documentation`.
+- **Metadata**: description and topics.
+- **Board**: one Project per active research repo, linked to the repo.
+
+Everything after the skeleton goes through a branch named
+`<type>/<issue>-<slug>` (types `feat fix refactor test docs chore`), a draft PR
+with `Closes #N`, and a squash merge. Every PR closes a task issue that is on
+the board under an epic.
+
+### Going public
+
+Only after checking the full history (all branches) for secrets, account
+identifiers, personal context, third-party material and committed junk. Once
+public, turn on:
+
+- Secret scanning, push protection, Dependabot alerts and security updates
+- Branch protection on `main`: require the `checks` status check
+- Auto-merge
 
 ## 9. Label Issues/PRs
 
@@ -154,7 +154,7 @@ Labels:
 
 ## Done
 
-Your repo is now aligned with org standards. The quality gate will run automatically on all PRs.
+Your repo is now aligned with org standards. CI runs the `checks` job on every PR.
 
 ---
 
