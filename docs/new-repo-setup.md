@@ -100,7 +100,8 @@ it. Add the dataset, model and framework where they apply.
 
 ## 8. First Commit, Settings and Board
 
-The skeleton is the only commit that goes straight to `main`:
+Filling in the skeleton is the only commit, after the one the template creates,
+that goes straight to `main`:
 
 ```bash
 uv sync --dev
