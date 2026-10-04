@@ -28,7 +28,7 @@ jobs:
           - model-monitor-custom
           - rl-core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -125,7 +125,7 @@ jobs:
                 javascript: ${{ steps.detect.outputs.javascript }}
                 go: ${{ steps.detect.outputs.go }}
               steps:
-                - uses: actions/checkout@v4
+                - uses: actions/checkout@v7
                 - id: detect
                   run: |
                     [ -f pyproject.toml ] && echo "python=true" >> $GITHUB_OUTPUT || echo "python=false" >> $GITHUB_OUTPUT
@@ -137,7 +137,7 @@ jobs:
               if: needs.detect-languages.outputs.python == 'true'
               runs-on: ubuntu-latest
               steps:
-                - uses: actions/checkout@v4
+                - uses: actions/checkout@v7
                 - uses: astral-sh/setup-uv@v2
                   with:
                     enable-cache: true
@@ -152,7 +152,7 @@ jobs:
               if: needs.detect-languages.outputs.javascript == 'true'
               runs-on: ubuntu-latest
               steps:
-                - uses: actions/checkout@v4
+                - uses: actions/checkout@v7
                 - uses: actions/setup-node@v4
                   with:
                     cache: npm
@@ -165,7 +165,7 @@ jobs:
               if: needs.detect-languages.outputs.go == 'true'
               runs-on: ubuntu-latest
               steps:
-                - uses: actions/checkout@v4
+                - uses: actions/checkout@v7
                 - uses: actions/setup-go@v4
                 - uses: golangci/golangci-lint-action@v3
                 - run: go test ./...
@@ -184,7 +184,7 @@ jobs:
                 pull-requests: write
                 contents: write
               steps:
-                - uses: actions/checkout@v4
+                - uses: actions/checkout@v7
                 - run: |
                     gh pr merge ${{ github.event.pull_request.number }} --squash --auto
                     git push origin --delete ${{ github.head_ref }} || true
