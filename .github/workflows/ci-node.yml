@@ -1,0 +1,62 @@
+# Org CI for Astro sites on Node and npm. Call it from a repo's ci.yml with
+# a job named `checks`, so the check reports as "checks / checks":
+#
+#   jobs:
+#     checks:
+#       uses: graylayer-labs/.github/.github/workflows/ci-node.yml@<sha> # vX.Y.Z
+#
+# Runs npm ci, the repo's `check` script (astro check) and its `build`
+# script. See docs/reusable-ci.md.
+name: ci-node
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node version for actions/setup-node.
+        type: string
+        default: "22"
+      check-script:
+        description: npm script that type-checks the site (astro check). Empty skips it.
+        type: string
+        default: check
+      build-script:
+        description: npm script that builds the site. Empty skips it.
+        type: string
+        default: build
+      build-with-token:
+        description: Give the build step GITHUB_TOKEN (read-only), for builds that read repo data from the GitHub API.
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: Job timeout.
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - run: npm ci
+      - if: inputs.check-script != ''
+        env:
+          SCRIPT: ${{ inputs.check-script }}
+        run: npm run "$SCRIPT"
+      - if: inputs.build-script != ''
+        env:
+          SCRIPT: ${{ inputs.build-script }}
+          GITHUB_TOKEN: ${{ inputs.build-with-token && github.token || '' }}
+        run: npm run "$SCRIPT"
