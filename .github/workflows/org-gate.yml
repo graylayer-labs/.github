@@ -1,0 +1,115 @@
+# Org PR gate. Called from each public repo's .github/workflows/gate.yml,
+# which runs on pull_request_target so a PR is always checked by the gate
+# on its base branch, never by a copy it edited. Required as "gate / gate".
+# Nothing here checks out or runs PR code. See .claude/rules/quality-gate.md.
+name: gate
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check title, issue link, size and protected paths
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+        run: |
+          set -euo pipefail
+          max_lines=400
+          types='feat|fix|refactor|test|docs|chore'
+          failed=0
+          fail() { echo "::error::$1"; failed=1; }
+
+          bot=false
+          [ "$AUTHOR" = "dependabot[bot]" ] && bot=true
+
+          # 1. Title is a Conventional Commit (it becomes the squash subject).
+          if ! printf '%s' "$TITLE" | grep -Eq "^($types)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^ ].*[^.]\$"; then
+            fail "Title is not '<type>(<scope>): <summary>' with type one of ${types//|/, } and no full stop: $TITLE"
+          fi
+          # GitHub appends " (#N)" to the squash subject, which is capped at 72.
+          title_max=$((72 - ${#NUMBER} - 4))
+          if [ "$bot" = false ] && [ "${#TITLE}" -gt "$title_max" ]; then
+            fail "Title is ${#TITLE} characters; the limit is $title_max so the squash subject fits 72."
+          fi
+
+          # 2. Body closes an issue (Dependabot PRs are exempt).
+          if [ "$bot" = false ] && ! printf '%s' "$BODY" | grep -Eiq '(^|[^[:alnum:]_])(closes|fixes) #[0-9]+'; then
+            fail "Body has no 'Closes #N' or 'Fixes #N'."
+          fi
+
+          # 3 and 4 need the file list.
+          gh api --paginate "repos/$REPO/pulls/$NUMBER/files?per_page=100" \
+            --jq '.[] | [.filename, (.previous_filename // ""), .additions, .deletions] | @tsv' > "$RUNNER_TEMP/files.tsv"
+          listed=$(wc -l < "$RUNNER_TEMP/files.tsv" | tr -d ' ')
+          if [ "$listed" -lt "$CHANGED_FILES" ]; then
+            fail "GitHub listed $listed of $CHANGED_FILES changed files; too large to check."
+          fi
+
+          lock_re='(^|/)(uv\.lock|poetry\.lock|Pipfile\.lock|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock)$'
+          lines=$(awk -F'\t' -v re="$lock_re" '$1 !~ re { n += $3 + $4 } END { print n + 0 }' "$RUNNER_TEMP/files.tsv")
+          echo "Changed lines excluding lockfiles: $lines"
+          if [ "$lines" -gt "$max_lines" ]; then
+            fail "$lines lines changed (lockfiles excluded); the limit is $max_lines. Split the PR."
+          fi
+
+          # 4. Protected paths: workflows (including this gate and its
+          # callers) and CODEOWNERS, old or new name.
+          protected_re='^\.github/workflows/|(^|/)CODEOWNERS$'
+          protected=$(awk -F'\t' -v re="$protected_re" '$1 ~ re || ($2 != "" && $2 ~ re) { print $1 }' "$RUNNER_TEMP/files.tsv")
+          if [ -n "$protected" ]; then
+            exempt=false
+            if [ "$bot" = true ]; then
+              # Dependabot action bumps pass only if every commit is
+              # Dependabot's own, signed by GitHub.
+              others=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits?per_page=100" \
+                --jq '.[] | select((.author.login // "") != "dependabot[bot]" or .commit.verification.verified != true) | .sha')
+              [ -z "$others" ] && exempt=true
+            fi
+            if [ "$exempt" = true ]; then
+              echo "Protected paths changed by verified Dependabot commits only:"
+              echo "$protected"
+            else
+              while IFS= read -r path; do
+                fail "Protected path changed: $path. This PR cannot auto-merge; the owner merges it by hand."
+              done <<< "$protected"
+            fi
+          fi
+
+          exit "$failed"
+
+      - name: Check head commit subject
+        if: github.event_name == 'push'
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          subject=${MESSAGE%%$'\n'*}
+          if ! printf '%s' "$subject" | grep -Eq '^(feat|fix|refactor|test|docs|chore)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^ ]'; then
+            echo "::error::Head commit subject is not a Conventional Commit: $subject"
+            exit 1
+          fi
+
+      - name: Review dependency changes
+        if: ${{ !cancelled() }}
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
+          base-ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-ref: ${{ github.event.pull_request.head.sha || github.event.after }}
