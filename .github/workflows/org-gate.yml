@@ -105,8 +105,10 @@ jobs:
             exit 1
           fi
 
+      # Dependency review needs the dependency graph, which private repos
+      # on the free plan do not have, so the step would fail every PR there.
       - name: Review dependency changes
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !github.event.repository.private }}
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
