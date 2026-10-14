@@ -17,7 +17,7 @@ Private repos (edge-vla, gnn-drag-surrogate, repo-template) have no branch prote
 - The body has no `Closes #N` or `Fixes #N`. Dependabot PRs are exempt.
 - More than 400 lines change, not counting lockfiles (`uv.lock`, `package-lock.json` and similar). Split the PR.
 - The PR touches a protected path: `.github/workflows/**` (which includes the gate, its callers and `ci.yml`) or any `CODEOWNERS`. Dependabot action bumps pass when every commit is Dependabot's own and signed by GitHub.
-- `actions/dependency-review-action` finds a dependency with a high or critical advisory.
+- `actions/dependency-review-action` finds a dependency with a high or critical advisory. Public repos only: private repos on the free plan have no dependency graph, so the step is skipped there.
 
 Callers run on `pull_request_target`, so a PR is judged by the gate as it is on the base branch. A PR cannot weaken the gate or `ci.yml` and have the weaker version judge it. The gate reads PR metadata through the API and never checks out PR code.
 
