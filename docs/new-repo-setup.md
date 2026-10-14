@@ -57,19 +57,22 @@ uv sync --dev
 
 ## 4. CI
 
-`.github/workflows/ci.yml` runs on pull requests and on pushes to `main`. Its
-`checks` job runs:
+`.github/workflows/ci.yml` runs on pull requests and on pushes to `main`. It
+is a thin caller of the org's reusable `ci-python.yml` (see
+[reusable-ci.md](reusable-ci.md) for inputs and versioning), and reports as
+`checks / checks`. It runs:
 
 ```bash
 uv sync --dev --locked
 uv run ruff check .
 uv run ruff format --check .
-uv run ty check
-uv run pytest
+uv run ty check --error-on-warning
+uv run pytest --cov=src        # plus diff-cover at 80% on PRs
 ```
 
 The job is skipped while a repo is still marked as a template, so it only runs
-in repos created from it.
+in repos created from it. Copy `gate.yml` from an existing public repo when the
+repo goes public.
 
 ## 5. Create `.claude/CLAUDE.md`
 
@@ -130,7 +133,8 @@ identifiers, personal context, third-party material and committed junk. Once
 public, turn on:
 
 - Secret scanning, push protection, Dependabot alerts and security updates
-- Branch protection on `main`: require the `checks` status check
+- Branch protection on `main`: require the `checks / checks` status check, and
+  a `gate` ruleset requiring `gate / gate`
 - Auto-merge
 
 ## 9. Label Issues/PRs
@@ -154,7 +158,7 @@ Labels:
 
 ## Done
 
-Your repo is now aligned with org standards. CI runs the `checks` job on every PR.
+Your repo is now aligned with org standards. CI runs `checks / checks` on every PR.
 
 ---
 
