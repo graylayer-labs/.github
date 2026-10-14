@@ -1,0 +1,24 @@
+# Calls the org PR gate. pull_request_target runs the gate as it is on the
+# base branch, so a PR cannot change the gate that checks it. The gate reads
+# PR metadata through the API and never checks out PR code.
+name: gate
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/org-gate.yml
