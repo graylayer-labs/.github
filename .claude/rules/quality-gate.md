@@ -1,88 +1,47 @@
-# Quality Gate Rule for Python Repos
+# Quality Gate
 
-All Python repositories in graylayer-labs MUST pass the org quality gate before merging to main.
+PRs in graylayer-labs are merged without a human reviewer, so two required checks have to be enough on their own. Both are mechanical; there is no AI review. Agents use the owner's GitHub identity, so a review approval cannot be used as a gate.
 
-## What the Quality Gate Checks
+## Required checks on main (public repos)
 
-1. **Ruff Linting** — Code style, imports, common bugs
-   - Uses org-wide config (`.github/ruff.toml`)
-   - Runs `ruff check` and `ruff format --check`
-2. **Type Checking** — Static type analysis with `ty`
-   - Optional-only: warnings don't block, errors do
-3. **Tests** — Pytest if present
-   - Skips silently if no tests configured
+| Check | Where it is defined | What it does |
+|---|---|---|
+| `checks` | Each repo's `.github/workflows/ci.yml` | Lint, format, types and tests, all strict. Python repos also fail when under 80% of the lines a PR changes are covered (diff-cover). |
+| `gate / gate` | This repo's `.github/workflows/org-gate.yml`, called by each repo's `.github/workflows/gate.yml` | PR rules below, plus dependency review. |
 
-## How to Set Up in Your Repo
+Private repos (edge-vla, gnn-drag-surrogate, repo-template) have no branch protection on the free plan; their checks run but are not enforced.
 
-### 1. Add to `.github/workflows/quality-gate.yml`
+## What `gate` fails on
 
-```yaml
-name: Quality Gate
+- The title is not `<type>(<scope>): <summary>` with type `feat`, `fix`, `refactor`, `test`, `docs` or `chore`, no full stop, and short enough that the squash subject (title plus ` (#N)`) fits 72 characters.
+- The body has no `Closes #N` or `Fixes #N`. Dependabot PRs are exempt.
+- More than 400 lines change, not counting lockfiles (`uv.lock`, `package-lock.json` and similar). Split the PR.
+- The PR touches a protected path: `.github/workflows/**` (which includes the gate, its callers and `ci.yml`) or any `CODEOWNERS`. Dependabot action bumps pass when every commit is Dependabot's own and signed by GitHub.
+- `actions/dependency-review-action` finds a dependency with a high or critical advisory.
 
-on: [pull_request]
+Callers run on `pull_request_target`, so a PR is judged by the gate as it is on the base branch. A PR cannot weaken the gate or `ci.yml` and have the weaker version judge it. The gate reads PR metadata through the API and never checks out PR code.
 
-jobs:
-  quality:
-    uses: graylayer-labs/.github/.github/workflows/quality-gate.yml@main
-```
+## Protected paths and the owner's merge
 
-### 2. Configure `pyproject.toml`
+A PR that fails `gate` never auto-merges. This covers every change to workflows and CODEOWNERS. The owner reviews it and merges it by hand, using the bypass on the repo's `gate` ruleset (the "Merge without waiting for requirements" option). `checks` stays in classic branch protection with admins included, so the bypass skips `gate` only.
 
-```toml
-[tool.ruff]
-# Extend org defaults
-extend-config = ["https://raw.githubusercontent.com/graylayer-labs/.github/main/ruff.toml"]
-# Or copy locally and reference: extend-config = ["../../.github/ruff.toml"]
+The bypass is open to the owner's identity, and agents use that identity, so GitHub cannot stop an agent from using it. The rule is therefore a process rule: agents never merge with `--admin` or any bypass, and every bypass merge shows in the ruleset's insights. A GitHub-enforced owner-only path needs agents on their own identity (a GitHub App or machine user); then CODEOWNERS with required review would do it.
 
-[build-system]
-requires = ["setuptools", "wheel"]
+## Auto-merge
 
-[project]
-python = ">=3.11"  # REQUIRED: specify version constraint
-```
+A repo allows auto-merge (squash) only when its `checks` runs lint, format, types and tests, all strict, with no `|| true` or exit-zero escapes. Eligible repos also run `dependabot-automerge.yml`, which turns on auto-merge for minor and patch Dependabot PRs; GitHub merges them once both checks are green.
 
-### 3. Ensure `ty` is configured
+## Coverage exceptions
 
-Create `pyrightconfig.json` or add to `pyproject.toml`:
+| Repo | Exception | Reason |
+|---|---|---|
+| `rl-core` | diff-cover excludes `rl_core/reproductions/*/runner.py`, `*/preflight.py` and `reproductions/__main__.py` | They drive ALE emulators and ROMs, which CI does not install (the `atari` group is optional by design). |
 
-```json
-{
-  "typeCheckingMode": "standard",
-  "pythonVersion": "3.11"
-}
-```
+## Before pushing
 
-Or in `pyproject.toml`:
-```toml
-[tool.pyright]
-typeCheckingMode = "standard"
-pythonVersion = "3.11"
-```
-
-## Before Pushing
-
-Run locally:
 ```bash
 uv sync
-uv run ruff check . && uv run ruff format .
-uv run ty .
-uv run pytest tests/
+uv run ruff check . && uv run ruff format --check .
+uv run ty check --error-on-warning
+uv run pytest
 ```
-
-## Violations
-
-- **Ruff failures** block the PR (non-negotiable: formatting, imports, bugs)
-- **Type check failures** are warnings (fix if possible, document if not)
-- **Test failures** block the PR
-
-## Repo-Specific Configuration
-
-You can override the org defaults in your own `pyproject.toml`:
-
-```toml
-[tool.ruff]
-extend-config = ["https://raw.githubusercontent.com/graylayer-labs/.github/main/ruff.toml"]
-line-length = 88  # override if needed for your project
-```
-
-But keep it minimal — if you need many exceptions, file an issue in graylayer-labs/.github.
