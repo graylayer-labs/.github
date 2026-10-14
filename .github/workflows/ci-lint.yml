@@ -1,0 +1,97 @@
+# Org lint for GitHub Actions workflows and shell scripts. Call it from a
+# repo's ci.yml with a job named `checks`, so the check reports as
+# "checks / checks":
+#
+#   jobs:
+#     checks:
+#       uses: graylayer-labs/.github/.github/workflows/ci-lint.yml@<sha> # vX.Y.Z
+#
+# Runs actionlint (with shellcheck on run: blocks) over
+# .github/workflows/*.yml, and shellcheck over the given scripts.
+# See docs/reusable-ci.md.
+name: ci-lint
+
+on:
+  workflow_call:
+    inputs:
+      actionlint-skip:
+        description: Space-separated workflow file names that actionlint skips. Each needs a reason in the caller.
+        type: string
+        default: ""
+      actionlint-shellcheck:
+        description: Let actionlint run shellcheck on the shell in run blocks.
+        type: boolean
+        default: true
+      shellcheck-paths:
+        description: Space-separated shell script globs to check. Empty skips shellcheck.
+        type: string
+        default: scripts/*.sh
+      shellcheck-severity:
+        description: Minimum shellcheck severity that fails (error, warning, info, style).
+        type: string
+        default: error
+      timeout-minutes:
+        description: Job timeout.
+        type: number
+        default: 10
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install actionlint and shellcheck
+        run: |
+          set -euo pipefail
+          uv tool install actionlint-py==1.7.12.25
+          uv tool install shellcheck-py==0.11.0.1
+          uv tool dir --bin >> "$GITHUB_PATH"
+
+      - name: Lint workflows
+        env:
+          SKIP: ${{ inputs.actionlint-skip }}
+          WITH_SHELLCHECK: ${{ inputs.actionlint-shellcheck }}
+        run: |
+          set -euo pipefail
+          files=()
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            case " $SKIP " in
+              *" $(basename "$f") "*) echo "Skipping $f"; continue ;;
+            esac
+            files+=("$f")
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No workflows to lint."
+            exit 0
+          fi
+          sc=
+          [ "$WITH_SHELLCHECK" = true ] && sc=$(command -v shellcheck)
+          actionlint -version
+          actionlint -shellcheck="$sc" "${files[@]}"
+
+      - name: Lint scripts
+        if: inputs.shellcheck-paths != ''
+        env:
+          PATHS: ${{ inputs.shellcheck-paths }}
+          SEVERITY: ${{ inputs.shellcheck-severity }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Word splitting and globbing of PATHS are intended.
+          # shellcheck disable=SC2206
+          scripts=($PATHS)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "No scripts match: $PATHS"
+            exit 0
+          fi
+          shellcheck --severity="$SEVERITY" "${scripts[@]}"

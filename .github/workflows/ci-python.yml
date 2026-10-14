@@ -1,0 +1,163 @@
+# Org CI for Python repos that use uv. Call it from a repo's ci.yml with a
+# job named `checks`, so the check reports as "checks / checks":
+#
+#   jobs:
+#     checks:
+#       uses: graylayer-labs/.github/.github/workflows/ci-python.yml@<sha> # vX.Y.Z
+#
+# Runs uv sync --locked, ruff check, ruff format --check, ty (warnings fail),
+# and pytest with coverage. On pull requests, diff-cover fails the job when
+# under 80% of the changed lines are covered. See docs/reusable-ci.md.
+name: ci-python
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: Python version for uv. Empty uses the project's .python-version or requires-python.
+        type: string
+        default: ""
+      system-packages:
+        description: Space-separated apt packages to install first (for example MuJoCo's OSMesa libraries).
+        type: string
+        default: ""
+      env:
+        description: Extra environment variables for every step, one NAME=value per line.
+        type: string
+        default: ""
+      ruff:
+        description: Run ruff check. Turn off only with a tracked issue.
+        type: boolean
+        default: true
+      format:
+        description: Run ruff format --check. Turn off only with a tracked issue.
+        type: boolean
+        default: true
+      ty:
+        description: Run ty check. Turn off only with a tracked issue.
+        type: boolean
+        default: true
+      ty-strict:
+        description: Fail ty on warnings as well as errors.
+        type: boolean
+        default: true
+      pytest-args:
+        description: Extra arguments for pytest, such as a test path or -q.
+        type: string
+        default: ""
+      coverage-source:
+        description: What pytest-cov measures (--cov=). A package name or a path such as src.
+        type: string
+        default: src
+      coverage-omit:
+        description: Space-separated glob patterns that diff-cover ignores. Record each one in .claude/rules/quality-gate.md.
+        type: string
+        default: ""
+      diff-cover-fail-under:
+        description: Minimum coverage of changed lines on pull requests, in percent. 0 turns the check off.
+        type: number
+        default: 80
+      timeout-minutes:
+        description: Job timeout.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # diff-cover compares with the base branch
+
+      - name: Set environment variables
+        if: inputs.env != ''
+        env:
+          EXTRA_ENV: ${{ inputs.env }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r line; do
+            [ -z "${line// /}" ] && continue
+            if ! printf '%s' "$line" | grep -Eq '^[A-Z_][A-Z0-9_]*=[^[:cntrl:]]*$'; then
+              echo "::error::env line is not NAME=value: $line"
+              exit 1
+            fi
+            case "$line" in
+              GITHUB_*|RUNNER_*|ACTIONS_*|PATH=*|LD_*|BASH_ENV=*|NODE_OPTIONS=*)
+                echo "::error::env may not set ${line%%=*}"
+                exit 1
+                ;;
+            esac
+            printf '%s\n' "$line" >> "$GITHUB_ENV"
+          done <<< "$EXTRA_ENV"
+
+      - name: Install system packages
+        if: inputs.system-packages != ''
+        env:
+          PACKAGES: ${{ inputs.system-packages }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$PACKAGES" | grep -Eq '^[a-z0-9][a-z0-9.+: -]*$'; then
+            echo "::error::system-packages has characters outside a-z 0-9 . + : - and space"
+            exit 1
+          fi
+          sudo apt-get update
+          # Word splitting is intended: one argument per package.
+          # shellcheck disable=SC2086
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python-version }}
+
+      - run: uv sync --dev --locked
+
+      - if: inputs.ruff
+        run: uv run --locked ruff check .
+
+      - if: inputs.format
+        run: uv run --locked ruff format --check .
+
+      - if: inputs.ty
+        env:
+          TY_STRICT: ${{ inputs.ty-strict }}
+        run: |
+          if [ "$TY_STRICT" = true ]; then
+            uv run --locked ty check --error-on-warning
+          else
+            uv run --locked ty check
+          fi
+
+      - name: Tests with coverage
+        env:
+          COV_SOURCE: ${{ inputs.coverage-source }}
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+        run: |
+          set -euo pipefail
+          # Word splitting of PYTEST_ARGS is intended.
+          # shellcheck disable=SC2086
+          uv run --locked --with pytest-cov==7.1.0 pytest $PYTEST_ARGS \
+            --cov="$COV_SOURCE" --cov-report=xml --cov-report=term
+
+      - name: Coverage of changed lines
+        if: github.event_name == 'pull_request' && inputs.diff-cover-fail-under > 0
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          FAIL_UNDER: ${{ inputs.diff-cover-fail-under }}
+          OMIT: ${{ inputs.coverage-omit }}
+        run: |
+          set -euo pipefail
+          args=(coverage.xml --compare-branch="origin/$BASE_REF" --fail-under="$FAIL_UNDER")
+          if [ -n "$OMIT" ]; then
+            read -r -a patterns <<< "$OMIT"
+            args+=(--exclude "${patterns[@]}")
+          fi
+          uvx diff-cover@10.6.0 "${args[@]}"

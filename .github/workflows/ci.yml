@@ -31,3 +31,15 @@ jobs:
             | xargs -0 uvx --from actionlint-py==1.7.12.25 actionlint -shellcheck=
       - name: Lint scripts
         run: uvx --from shellcheck-py==0.11.0.1 shellcheck --severity=error scripts/*.sh
+
+  # The org lint workflow, called from this commit. Reports as
+  # "checks / checks". Runs beside the inline job above until main requires
+  # "checks / checks" (#17); then the inline job is removed.
+  shared:
+    name: checks
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-lint.yml
+    with:
+      # Retired or pending retirement (#18); both fail actionlint.
+      actionlint-skip: code-quality.yml sync-org-standards.yml
