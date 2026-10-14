@@ -22,4 +22,4 @@ Private repos (edge-vla, gnn-drag-surrogate, repo-template) have no branch prote
 
 ## Retired
 
-The label-driven system that used to live here (`code-quality.yml`, `monitor-org-prs.yml`, `quality-gate.yml`, `ruff.yml`, `pyright.yml`) was removed in October 2026. `sync-org-standards.yml` is still present but fails on every run and is awaiting a decision.
+The label-driven system that used to live here (`code-quality.yml`, `monitor-org-prs.yml`, `quality-gate.yml`, `ruff.yml`, `pyright.yml`) was removed in October 2026, together with `sync-org-standards.yml`, which pushed copies of those standards into each repo and had been failing on every run.
