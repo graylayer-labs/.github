@@ -113,7 +113,7 @@ jobs:
           # shellcheck disable=SC2086
           sudo apt-get install -y --no-install-recommends $PACKAGES
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           python-version: ${{ inputs.python-version }}
