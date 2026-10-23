@@ -13,7 +13,7 @@ PRs merge without a human reviewer, so auto-merge rests on two required checks o
 
 ## What auto-merges
 
-- Only on repos whose `checks` runs lint, format, types and tests, all strict. Today: rl-core, llm-post-training-lab, ssl-aerial-person-detection.
+- Only on repos whose `checks` runs lint, format, types and tests, all strict. Today: rl-core, llm-post-training-lab, aerial-search-lab.
 - On those repos `dependabot-automerge.yml` turns on squash auto-merge for minor and patch Dependabot updates; GitHub merges them once both checks are green.
 - Any other PR is merged by the agent that owns it (squash, branch deleted) after both checks pass and its self-review is clean.
 - PRs that change `.github/workflows/**` or `CODEOWNERS` fail `gate` and are merged by the owner by hand.

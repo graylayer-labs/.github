@@ -46,7 +46,7 @@ When opening issues or PRs:
 
 Once labels are synced to your repo (via org script), apply to issues/PRs:
 
-Example: ssl-aerial-person-detection
+Example: aerial-search-lab
 ```
 Issue: "Add aerial person detection baseline"
 Labels:
